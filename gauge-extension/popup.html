@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      width: 200px;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 20px;
+    }
+    button {
+      padding: 5px 15px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #value-display {
+      font-size: 24px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h3>Gauge Control</h3>
+  <div class="controls">
+    <button id="decrease">-</button>
+    <span id="value-display">0</span>
+    <button id="increase">+</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
+
