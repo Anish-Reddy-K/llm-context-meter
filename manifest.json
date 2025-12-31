@@ -1,15 +1,32 @@
 {
   "manifest_version": 3,
-  "name": "Dynamic Gauge Extension",
-  "version": "1.0",
-  "description": "A simple extension with a dynamic gauge icon.",
-  "permissions": ["storage", "activeTab"],
+  "name": "LLM Context Meter",
+  "version": "1.0.0",
+  "description": "See how much of your LLM's context window is being used in real-time. Works with ChatGPT, Claude, and Gemini.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://*.claude.ai/*",
+    "https://gemini.google.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://*.claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Gauge Control"
+    "default_title": "LLM Context Meter"
   }
 }
-

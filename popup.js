@@ -1,92 +1,152 @@
-// Initialize state
-let currentValue = 0;
+// LLM Context Meter - Popup Script
 
-// Elements
-const display = document.getElementById('value-display');
-const btnIncrease = document.getElementById('increase');
-const btnDecrease = document.getElementById('decrease');
+const container = document.getElementById('content');
 
-// Load saved value
-chrome.storage.local.get(['gaugeValue'], function(result) {
-  if (result.gaugeValue !== undefined) {
-    currentValue = result.gaugeValue;
-    updateUI();
-  } else {
-      // If no value saved, initialize with 0
-      updateGauge(0);
+// Format large numbers
+function formatNumber(num) {
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  } else if (num >= 1000) {
+    return (num / 1000).toFixed(1) + 'K';
   }
-});
+  return num.toString();
+}
 
-// Listen for changes from background script (auto-updates)
+// Get color class based on percentage
+function getColorClass(percentage) {
+  if (percentage < 25) return 'green';
+  if (percentage < 50) return 'lime';
+  if (percentage < 75) return 'yellow';
+  if (percentage < 90) return 'orange';
+  return 'red';
+}
+
+// Get platform class
+function getPlatformClass(platform) {
+  if (!platform) return '';
+  const p = platform.toLowerCase();
+  if (p.includes('chatgpt') || p.includes('openai')) return 'chatgpt';
+  if (p.includes('claude')) return 'claude';
+  if (p.includes('gemini')) return 'gemini';
+  return '';
+}
+
+// Format model name for display
+function formatModelName(model) {
+  if (!model || model.startsWith('default-')) return '';
+  return model.toUpperCase().replace(/-/g, ' ');
+}
+
+// Calculate stroke dashoffset for SVG circle
+function calculateDashOffset(percentage, circumference) {
+  const progress = Math.min(percentage, 100) / 100;
+  return circumference * (1 - progress);
+}
+
+// Render active state
+function renderActive(data) {
+  const percentage = Math.round(data.percentage || 0);
+  const colorClass = getColorClass(percentage);
+  const platformClass = getPlatformClass(data.platform);
+  const modelName = formatModelName(data.model);
+  const highUsage = percentage >= 75 ? 'high-usage' : '';
+
+  // SVG circle calculations
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = calculateDashOffset(percentage, circumference);
+
+  container.innerHTML = `
+    <div class="header">
+      <span class="platform-badge ${platformClass} active">${data.platform || 'LLM'}</span>
+      ${modelName ? `<span class="model-name">${modelName}</span>` : ''}
+    </div>
+
+    <div class="gauge-container">
+      <svg class="gauge-svg" viewBox="0 0 120 120">
+        <circle class="gauge-bg" cx="60" cy="60" r="${radius}"/>
+        <circle 
+          class="gauge-progress ${colorClass}" 
+          cx="60" 
+          cy="60" 
+          r="${radius}"
+          stroke-dasharray="${circumference}"
+          stroke-dashoffset="${dashOffset}"
+        />
+      </svg>
+      <div class="gauge-center">
+        <div class="percentage ${colorClass} ${highUsage}">
+          ${percentage}<span class="percentage-symbol">%</span>
+        </div>
+        <div class="label">Context Used</div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value">${formatNumber(data.tokenCount || 0)}</div>
+        <div class="stat-label">Tokens Used</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">${formatNumber(data.contextLimit || 0)}</div>
+        <div class="stat-label">Context Limit</div>
+      </div>
+    </div>
+  `;
+}
+
+// Render inactive state
+function renderInactive() {
+  container.innerHTML = `
+    <div class="inactive-message">
+      <h3>No LLM Detected</h3>
+      <p>Open a conversation on one of the supported sites to see context usage.</p>
+      <div class="sites">
+        <span class="site">ChatGPT</span>
+        <span class="site">Claude</span>
+        <span class="site">Gemini</span>
+      </div>
+    </div>
+  `;
+}
+
+// Load and display data
+function loadData() {
+  // First try to get from storage
+  chrome.storage.local.get(['currentContext'], (result) => {
+    const data = result.currentContext;
+    
+    if (data && !data.inactive && data.platform) {
+      renderActive(data);
+    } else {
+      // Try to get fresh data from background
+      chrome.runtime.sendMessage({ type: 'GET_CONTEXT' }, (response) => {
+        if (chrome.runtime.lastError) {
+          renderInactive();
+          return;
+        }
+        
+        if (response && response.platform && !response.inactive) {
+          renderActive(response);
+        } else {
+          renderInactive();
+        }
+      });
+    }
+  });
+}
+
+// Listen for storage changes (real-time updates)
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'local' && changes.gaugeValue) {
-    currentValue = changes.gaugeValue.newValue;
-    updateUI();
+  if (namespace === 'local' && changes.currentContext) {
+    const data = changes.currentContext.newValue;
+    if (data && !data.inactive && data.platform) {
+      renderActive(data);
+    } else {
+      renderInactive();
+    }
   }
 });
 
-btnIncrease.addEventListener('click', () => {
-  if (currentValue < 10) {
-    currentValue++;
-    updateGauge(currentValue);
-  }
-});
-
-btnDecrease.addEventListener('click', () => {
-  if (currentValue > 0) {
-    currentValue--;
-    updateGauge(currentValue);
-  }
-});
-
-function updateGauge(value) {
-  // Save state
-  chrome.storage.local.set({ gaugeValue: value });
-  updateUI();
-  drawIcon(value);
-}
-
-function updateUI() {
-  display.textContent = currentValue;
-}
-
-function drawIcon(value) {
-  const canvas = document.createElement('canvas');
-  const size = 32; // Use 32x32 for decent resolution
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-
-  // Background (light gray circle)
-  ctx.beginPath();
-  ctx.arc(size/2, size/2, size/2 - 2, 0, 2 * Math.PI);
-  ctx.fillStyle = '#eeeeee';
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#999';
-  ctx.stroke();
-
-  // Gauge (filled arc)
-  // 0 to 10 maps to 0 to 2*PI (or maybe just a 270 degree arc for "gauge" look)
-  // Let's do a full circle fill for simplicity: 0 is empty, 10 is full
-  const startAngle = -Math.PI / 2; // Start at top
-  const endAngle = startAngle + (value / 10) * (2 * Math.PI);
-
-  ctx.beginPath();
-  ctx.moveTo(size/2, size/2);
-  ctx.arc(size/2, size/2, size/2 - 4, startAngle, endAngle);
-  ctx.closePath();
-  
-  // Color based on value
-  if (value < 4) ctx.fillStyle = '#4CAF50'; // Green
-  else if (value < 8) ctx.fillStyle = '#FFC107'; // Yellow
-  else ctx.fillStyle = '#F44336'; // Red
-  
-  ctx.fill();
-
-  // Get image data
-  const imageData = ctx.getImageData(0, 0, size, size);
-
-  // Set the extension icon
-  chrome.action.setIcon({ imageData: imageData });
-}
+// Initial load
+loadData();
